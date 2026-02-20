@@ -141,15 +141,15 @@ void Game::handleEvents() {
                         showSaveNotification("Press 'R' again within 5 seconds to RESET ALL PROGRESS!");
                     }
                 }
-                else if (event.key.keysym.sym == SDLK_a) {  // New: Ascend with 'A' key
+                else if (event.key.keysym.sym == SDLK_a) {  // Ascend with 'A' key
                     if (!canAscend()) {
-                        showSaveNotification("Reach Level 100 to unlock Ascension!");
+                        showSaveNotification("Reach Level 20 to unlock Ascension!");
                     } else if (ascensionConfirmationPending) {
                         ascendGame();
                     } else {
                         ascensionConfirmationPending = true;
                         ascensionConfirmationTimer = 5.0;
-                        int starsToGain = playerLevel / 100;
+                        int starsToGain = playerLevel / 20;
                         std::string msg = std::format("Press 'A' again to ASCEND and gain {} Prestige Star(s)!", starsToGain);
                         showSaveNotification(msg);
                     }
@@ -289,7 +289,12 @@ uint64_t Game::getXPForNextLevel() const {
         return 100;  // First level requires 100 XP
     }
 
-    // XP required = 10 * level * (1.1^level) - Compound scaling
+    // Max level is 100
+    if (playerLevel >= 100) {
+        return UINT64_MAX;  // Can't level up past 100
+    }
+
+    // XP required = 100 * level * (1.1^level) - Compound scaling
     return static_cast<uint64_t>(100.0 * playerLevel * std::pow(1.1, playerLevel));
 }
 
@@ -303,7 +308,7 @@ void Game::updateExperience() {
     // Calculate how much lifetime taxes have increased
     double taxesSinceLastXP = lifetimeTaxes - lastTaxesForXP;
     
-    // Award XP (1 XP per 10 taxes)
+    // Award XP (1 XP per 100 taxes)
     uint64_t xpGained = static_cast<uint64_t>(taxesSinceLastXP / TAXES_PER_XP);
     
     if (xpGained > 0) {
@@ -312,7 +317,7 @@ void Game::updateExperience() {
         
         // Check for level up
         uint64_t xpNeeded = getXPForNextLevel();
-        while (currentXP >= xpNeeded) {
+        while (currentXP >= xpNeeded && playerLevel < 100) {  // Cap at level 100
             currentXP -= xpNeeded;
             playerLevel++;
             
@@ -321,9 +326,17 @@ void Game::updateExperience() {
             recalculateClickValue();
             
             int bonusPercent = static_cast<int>((getLevelBonus() - 1.0) * 100);
-            std::string msg = std::format("LEVEL UP! Lv{} - Global Tax Bonus: +{}%", 
-                playerLevel, bonusPercent);
-            showSaveNotification(msg);
+            
+            // Special message at max level
+            if (playerLevel == 100) {
+                std::string msg = std::format("MAX LEVEL! Lv{} - Ready to Ascend for {} Stars!", 
+                    playerLevel, getStarCount());
+                showSaveNotification(msg);
+            } else {
+                std::string msg = std::format("LEVEL UP! Lv{} - Global Tax Bonus: +{}%", 
+                    playerLevel, bonusPercent);
+                showSaveNotification(msg);
+            }
             
             xpNeeded = getXPForNextLevel();
         }
@@ -534,8 +547,8 @@ void Game::renderLevelBar() {
 }
 
 int Game::getStarCount() const {
-    // 1 star per 100 levels, maximum 5 stars
-    int stars = playerLevel / 100;
+    // 1 star per 20 levels, maximum 5 stars at level 100
+    int stars = playerLevel / 20;
     return std::min(stars, 5);
 }
 
@@ -610,7 +623,7 @@ void Game::render() {
     // Save/Load/Reset/Ascend instructions
     if (ascensionConfirmationPending) {
         SDL_Color ascendColor = {255, 100, 255, 255};
-        std::string confirmText = std::format("!! PRESS 'A' AGAIN TO ASCEND ({} STARS) !!", playerLevel / 100);
+        std::string confirmText = std::format("!! PRESS 'A' AGAIN TO ASCEND ({} STARS) !!", playerLevel / 20);
         renderText(confirmText, 350, 770, ascendColor);
     } else if (resetConfirmationPending) {
         SDL_Color warningColor = {255, 50, 50, 255};
@@ -621,7 +634,7 @@ void Game::render() {
             instructions += " | A: ASCEND (Available!)";
             renderText(instructions, 300, 770, {255, 215, 0, 255});
         } else {
-            instructions += " | A: Ascend (Reach Lv100)";
+            instructions += " | A: Ascend (Reach Lv20)";
             renderText(instructions, 300, 770, {180, 180, 180, 255});
         }
     }
@@ -1006,6 +1019,10 @@ void Game::resetGame() {
     for (auto& upgrade : clickUpgrades) {
         upgrade.owned = 0;
     }
+
+	// Reset prestige system
+    prestigeStars = 0;
+	totalAscensions = 0;
     
 #ifdef _DEBUG
     // Reapply debug boosts
@@ -1026,8 +1043,8 @@ void Game::resetGame() {
 }
 
 bool Game::canAscend() const {
-    // Can ascend when you have at least 1 star (level 100+)
-    return playerLevel >= 100;
+    // Can ascend when you have at least 1 star (level 20+)
+    return playerLevel >= 20;
 }
 
 double Game::getPrestigeBonus() const {
@@ -1037,12 +1054,12 @@ double Game::getPrestigeBonus() const {
 
 void Game::ascendGame() {
     if (!canAscend()) {
-        showSaveNotification("You need to reach Level 100 to ascend!");
+        showSaveNotification("You need to reach Level 20 to ascend!");
         return;
     }
     
-    // Calculate stars earned from current level
-    int starsEarned = playerLevel / 100;
+    // Calculate stars earned from current level (1 per 20 levels)
+    int starsEarned = playerLevel / 20;
     
     // Add to permanent prestige stars
     prestigeStars += starsEarned;
@@ -1082,8 +1099,9 @@ void Game::ascendGame() {
     ascensionConfirmationPending = false;
     
     std::string msg = std::format("ASCENDED! +{} Stars | Total: {} Stars ({}x Bonus)", 
-        starsEarned, prestigeStars, static_cast<int>(getPrestigeBonus()));
+        starsEarned, prestigeStars, getPrestigeBonus());
     showSaveNotification(msg);
     
-    SDL_Log("Ascension #%d complete. Total prestige stars: %d", totalAscensions, prestigeStars);
+    SDL_Log("Ascension #%d complete. Earned %d stars. Total prestige stars: %d", 
+            totalAscensions, starsEarned, prestigeStars);
 }

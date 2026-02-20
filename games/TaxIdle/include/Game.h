@@ -170,9 +170,9 @@ private:
     static constexpr double BONUS_PER_LEVEL = 0.02;
 
 #ifdef _DEBUG
-	static constexpr double DEBUG_MANUAL_TAX_PER_CLICK = 1000000000.0;
+	static constexpr double DEBUG_MANUAL_TAX_PER_CLICK = 1000.0;
 	static constexpr double DEBUG_BONUS_PER_LEVEL = 10.0; // 1000% bonus per level for testing
-    static constexpr double DEBUG_START_MONEY = 10000.0;
+    static constexpr double DEBUG_START_MONEY = 1000.0;
     static constexpr int DEBUG_START_LEVEL = 0;
 #endif // DEBUG
 
