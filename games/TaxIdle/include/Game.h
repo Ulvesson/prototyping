@@ -166,7 +166,7 @@ private:
     static constexpr int UPGRADE_HEIGHT = 60;
     static constexpr int UPGRADE_SPACING = 10;
     static constexpr int CLICK_UPGRADE_X_START = 800;
-    static constexpr double TAXES_PER_XP = 1.0;
+    static constexpr double TAXES_PER_XP = 100.0;
     static constexpr double BONUS_PER_LEVEL = 0.02;
 
 #ifdef _DEBUG

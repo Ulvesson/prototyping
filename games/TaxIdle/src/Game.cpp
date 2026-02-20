@@ -290,7 +290,7 @@ uint64_t Game::getXPForNextLevel() const {
     }
 
     // XP required = 10 * level * (1.1^level) - Compound scaling
-    return static_cast<uint64_t>(10.0 * playerLevel * std::pow(1.1, playerLevel));
+    return static_cast<uint64_t>(100.0 * playerLevel * std::pow(1.1, playerLevel));
 }
 
 double Game::getXPProgress() const {
