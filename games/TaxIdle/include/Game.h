@@ -25,8 +25,10 @@ struct Upgrade {
     }
 
     // Get effective tax per second with milestone bonus
-    double getEffectiveTaxPerSecond() const {
-        return baseTaxPerSecond * getMilestoneMultiplier();
+    double getEffectiveTaxPerSecond(double prestigeBonus) const {
+        //  //upgrade.baseTaxPerSecond * upgrade.owned * upgrade.getMilestoneMultiplier();
+		double tax = baseTaxPerSecond * owned * getMilestoneMultiplier();
+		return tax += tax * prestigeBonus;  // Apply prestige bonus to tax per second
     }
 
     // Get next milestone info
@@ -145,7 +147,7 @@ private:
     bool ascensionConfirmationPending = false;
     double ascensionConfirmationTimer = 0.0;
     
-    static constexpr double PRESTIGE_BONUS_PER_STAR = 0.50;  // 50% per star
+    static constexpr double PRESTIGE_BONUS_PER_STAR = 0.25;  // 25% per star
 
     // Upgrades
     std::vector<Upgrade> upgrades;
@@ -167,7 +169,8 @@ private:
     static constexpr int UPGRADE_SPACING = 10;
     static constexpr int CLICK_UPGRADE_X_START = 800;
     static constexpr double TAXES_PER_XP = 100.0;
-    static constexpr double BONUS_PER_LEVEL = 0.02;
+    static constexpr double BONUS_PER_LEVEL = 0.005;
+	static constexpr double XP_BASE = 100.0;
 
 #ifdef _DEBUG
 	static constexpr double DEBUG_MANUAL_TAX_PER_CLICK = 1000.0;

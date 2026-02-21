@@ -244,25 +244,23 @@ void Game::tryPurchaseClickUpgrade(int upgradeIndex) {
 }
 
 double Game::getLevelBonus() const {
+    double bonus = 1;
 #ifdef _DEBUG
-    return 1.0 + (playerLevel * DEBUG_BONUS_PER_LEVEL);
+    bonus += (playerLevel * DEBUG_BONUS_PER_LEVEL);
 #else
-    return 1.0 + (playerLevel * BONUS_PER_LEVEL);
+    bonus += (playerLevel * BONUS_PER_LEVEL);
 #endif
+    bonus += bonus * getPrestigeBonus();
+    return bonus;
 }
 
 void Game::recalculateTaxesPerSecond() {
     taxesPerSecond = 0.0;
     for (const auto& upgrade : upgrades) {
         if (upgrade.owned > 0) {
-            taxesPerSecond += upgrade.baseTaxPerSecond * upgrade.owned * upgrade.getMilestoneMultiplier();
+            taxesPerSecond += upgrade.getEffectiveTaxPerSecond(getPrestigeBonus());
         }
     }
-    // Apply global level bonus
-    taxesPerSecond *= getLevelBonus();
-
-    // Apply prestige bonus
-    taxesPerSecond *= getPrestigeBonus();
 }
 
 void Game::recalculateClickValue() {
@@ -277,16 +275,17 @@ void Game::recalculateClickValue() {
         }
     }
     // Apply global level bonus
-    manualTaxPerClick *= getLevelBonus();
+    manualTaxPerClick += manualTaxPerClick * getLevelBonus();
 
     // Apply prestige bonus
-    manualTaxPerClick *= getPrestigeBonus();
+    manualTaxPerClick += manualTaxPerClick * getPrestigeBonus();
 }
 
 uint64_t Game::getXPForNextLevel() const {
+	double base_xp = XP_BASE + XP_BASE * getPrestigeBonus(); // Increase base XP with prestige bonus
     // Special case for level 0 -> 1
     if (playerLevel == 0) {
-        return 100;  // First level requires 100 XP
+        return base_xp;
     }
 
     // Max level is 100
@@ -294,8 +293,8 @@ uint64_t Game::getXPForNextLevel() const {
         return UINT64_MAX;  // Can't level up past 100
     }
 
-    // XP required = 100 * level * (1.1^level) - Compound scaling
-    return static_cast<uint64_t>(100.0 * playerLevel * std::pow(1.1, playerLevel));
+    // XP required = base_xp * level * (1.1^level) - Compound scaling
+    return static_cast<uint64_t>(base_xp * playerLevel * std::pow(1.1, playerLevel));
 }
 
 double Game::getXPProgress() const {
@@ -676,7 +675,7 @@ void Game::render() {
         renderButton("MAX", 720, y, 50, UPGRADE_HEIGHT, canBuyMax);
         
         // Show effective value with milestone bonus
-        double effectiveValue = upgrade.getEffectiveTaxPerSecond();
+        double effectiveValue = upgrade.getEffectiveTaxPerSecond(getPrestigeBonus());
         int multiplier = static_cast<int>(upgrade.getMilestoneMultiplier());
         
         std::string infoText;
@@ -1048,8 +1047,7 @@ bool Game::canAscend() const {
 }
 
 double Game::getPrestigeBonus() const {
-    // Each prestige star gives +50% to all production
-    return 1.0 + (prestigeStars * PRESTIGE_BONUS_PER_STAR);
+    return prestigeStars * PRESTIGE_BONUS_PER_STAR;
 }
 
 void Game::ascendGame() {
@@ -1062,7 +1060,7 @@ void Game::ascendGame() {
     int starsEarned = playerLevel / 20;
     
     // Add to permanent prestige stars
-    prestigeStars += starsEarned;
+    prestigeStars += (starsEarned * starsEarned);
     totalAscensions++;
     
     // Reset progress (similar to resetGame but keep prestige)
