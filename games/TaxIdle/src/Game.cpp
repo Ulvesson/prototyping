@@ -32,6 +32,8 @@ Game::Game() {
 #ifdef _DEBUG
     // Debug mode: Start with higher click value for testing
     manualTaxPerClick = DEBUG_MANUAL_TAX_PER_CLICK;
+	totalTaxes = DEBUG_START_MONEY;
+	playerLevel = DEBUG_START_LEVEL;
     SDL_Log("DEBUG MODE: Starting with 1000 click value");
 #endif
 }
@@ -289,14 +291,14 @@ void Game::tryPurchaseClickUpgrade(int upgradeIndex) {
 }
 
 double Game::getLevelBonus() const {
-    double bonus = 1;
+    double bonus = 0;
 #ifdef _DEBUG
     bonus += (playerLevel * DEBUG_BONUS_PER_LEVEL);
 #else
     bonus += (playerLevel * BONUS_PER_LEVEL);
 #endif
-	double prestigeBonus = getPrestigeBonus();
-	return prestigeBonus > 0 ? bonus * prestigeBonus : bonus;  // Apply prestige bonus to level bonus
+	bonus += bonus * getPrestigeBonus();  // Apply prestige bonus to level bonus
+    return bonus;
 }
 
 void Game::recalculateTaxesPerSecond() {
@@ -327,12 +329,8 @@ void Game::recalculateClickValue() {
 }
 
 uint64_t Game::getXPForNextLevel() const {
-	double base_xp = XP_BASE + XP_BASE * getPrestigeBonus(); // Increase base XP with prestige bonus
-    // Special case for level 0 -> 1
-    if (playerLevel == 0) {
-        return base_xp;
-    }
-
+    double base_xp = XP_BASE;
+   
     // Max level is 100
     if (playerLevel >= 100) {
         return UINT64_MAX;  // Can't level up past 100
@@ -369,16 +367,14 @@ void Game::updateExperience() {
             recalculateTaxesPerSecond();
             recalculateClickValue();
             
-            int bonusPercent = static_cast<int>((getLevelBonus() - 1.0) * 100);
-            
             // Special message at max level
             if (playerLevel == 100) {
                 std::string msg = std::format("MAX LEVEL! Lv{} - Ready to Ascend for {} Stars!", 
                     playerLevel, getStarCount());
                 showSaveNotification(msg);
             } else {
-                std::string msg = std::format("LEVEL UP! Lv{} - Global Tax Bonus: +{}%", 
-                    playerLevel, bonusPercent);
+                std::string msg = std::format("LEVEL UP! Lv{} - Global Tax Bonus: +{:.1f}%", 
+                    playerLevel, getLevelBonus() * 100);
                 showSaveNotification(msg);
             }
             
@@ -598,18 +594,18 @@ void Game::renderLevelBar() {
     SDL_RenderDrawRect(renderer, &bgRect);
 
     // Level text with bonus and time to next level
-    int bonusPercent = static_cast<int>((getLevelBonus() - 1.0) * 100);
+    double bonusPercent = getLevelBonus() * 100;
     double timeToNext = getTimeToNextLevel();
     std::string timeStr = formatTime(timeToNext);
 
     std::string levelText;
-    if (playerLevel == 0) {
-        // At level 0, don't show bonus percentage (it's 0%)
+    if (playerLevel <= 1) {
+        // At level 1, show minimal bonus (or don't show if it's negligible)
         levelText = std::format("Level {} | XP: {}/{} | Next: {}",
             playerLevel, formatNumber(currentXP), formatNumber(getXPForNextLevel()), timeStr);
     }
     else {
-        levelText = std::format("Level {} (+{}% Bonus) | XP: {}/{} | Next: {}",
+        levelText = std::format("Level {} ({:.1f}% Bonus) | XP: {}/{} | Next: {}",
             playerLevel, bonusPercent, formatNumber(currentXP), formatNumber(getXPForNextLevel()), timeStr);
     }
     renderText(levelText, barX + 10, barY + 7, { 255, 255, 255, 255 });
@@ -1089,17 +1085,17 @@ void Game::resetGame() {
     taxesPerSecond = 0.0;
     lifetimeTaxes = 0.0;
     manualTaxPerClick = 1.0;
-
+    
     // Reset level system
-    playerLevel = 0;  // Changed from 1 to 0
+    playerLevel = 1;  // Start at level 1
     currentXP = 0;
     lastTaxesForXP = 0.0;
-
+    
     // Reset all upgrades
     for (auto& upgrade : upgrades) {
         upgrade.owned = 0;
     }
-
+    
     for (auto& upgrade : clickUpgrades) {
         upgrade.owned = 0;
     }
@@ -1110,26 +1106,26 @@ void Game::resetGame() {
     // Reset prestige system
     prestigeStars = 0;
     totalAscensions = 0;
-
+    
     // Reset time tracking
     totalPlayTime = 0.0;
     timeSinceLastAscension = 0.0;
-
+    
 #ifdef _DEBUG
     // Reapply debug boosts
     manualTaxPerClick = DEBUG_MANUAL_TAX_PER_CLICK;
-    totalTaxes = 0;
-    playerLevel = 0;
+    totalTaxes = DEBUG_START_MONEY;
+    playerLevel = DEBUG_START_LEVEL;
     SDL_Log("Game reset with DEBUG MODE values");
 #endif
-
+    
     // Recalculate everything
     recalculateTaxesPerSecond();
     recalculateClickValue();
-
+    
     resetConfirmationPending = false;
     showSaveNotification("Game Reset! All progress cleared.");
-
+    
     SDL_Log("Game has been reset to initial state");
 }
 
@@ -1148,57 +1144,57 @@ void Game::ascendGame() {
         showSaveNotification("You need to reach Level 20 to ascend!");
         return;
     }
-
+    
     // Calculate stars earned from current level (1 per 20 levels)
     int starsEarned = playerLevel / 20;
-
+    
     // Add to permanent prestige stars
     prestigeStars += (starsEarned * starsEarned);
     totalAscensions++;
-
+    
     // Reset progress (similar to resetGame but keep prestige and total play time)
     totalTaxes = 0.0;
     taxesPerSecond = 0.0;
     lifetimeTaxes = 0.0;
     manualTaxPerClick = 1.0;
-
+    
     // Reset level system
-    playerLevel = 0;
+    playerLevel = 1;  // Start at level 1
     currentXP = 0;
     lastTaxesForXP = 0.0;
-
+    
     // Reset time since last ascension (but keep total play time)
     timeSinceLastAscension = 0.0;
-
+    
     // Reset all upgrades
     for (auto& upgrade : upgrades) {
         upgrade.owned = 0;
     }
-
+    
     for (auto& upgrade : clickUpgrades) {
         upgrade.owned = 0;
     }
 
     // Reset auto-upgrade settings on ascension
     std::fill(autoUpgradeEnabled.begin(), autoUpgradeEnabled.end(), false);
-
+    
 #ifdef _DEBUG
     // Reapply debug boosts
     manualTaxPerClick = DEBUG_MANUAL_TAX_PER_CLICK;
     totalTaxes = DEBUG_START_MONEY;
     playerLevel = DEBUG_START_LEVEL;
 #endif
-
+    
     // Recalculate with new prestige bonus
     recalculateTaxesPerSecond();
     recalculateClickValue();
-
+    
     ascensionConfirmationPending = false;
-
-    std::string msg = std::format("ASCENDED! +{} Stars | Total: {} Stars ({}x Bonus)",
+    
+    std::string msg = std::format("ASCENDED! +{} Stars | Total: {} Stars ({}x Bonus)", 
         starsEarned, prestigeStars, getPrestigeBonus());
     showSaveNotification(msg);
-
-    SDL_Log("Ascension #%d complete. Earned %d stars. Total prestige stars: %d",
-        totalAscensions, starsEarned, prestigeStars);
+    
+    SDL_Log("Ascension #%d complete. Earned %d stars. Total prestige stars: %d", 
+            totalAscensions, starsEarned, prestigeStars);
 }

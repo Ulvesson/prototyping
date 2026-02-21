@@ -18,10 +18,18 @@ struct Upgrade {
         return static_cast<uint64_t>(baseCost * std::pow(costMultiplier, owned));
     }
 
-    // Calculate milestone bonus (2x per 10 levels)
+    // Calculate milestone bonus (2x per 10 levels, 10x per 50 levels)
     double getMilestoneMultiplier() const {
-        int milestones = owned / 10;
-        return std::pow(2.0, milestones);
+        int milestones10 = owned / 10;
+        int milestones50 = owned / 50;
+        
+        // 2x bonus per 10 levels
+        double bonus10 = std::pow(2.0, milestones10);
+        
+        // Additional 10x bonus per 50 levels
+        double bonus50 = std::pow(10.0, milestones50);
+        
+        return bonus10 * bonus50;
     }
 
     // Get effective tax per second with milestone bonus
@@ -40,6 +48,15 @@ struct Upgrade {
     int getNextMilestoneLevel() const {
         return ((owned / 10) + 1) * 10;
     }
+    
+    // Get next major milestone (50 level) info
+    int getLevelsToNextMajorMilestone() const {
+        return 50 - (owned % 50);
+    }
+    
+    int getNextMajorMilestoneLevel() const {
+        return ((owned / 50) + 1) * 50;
+    }
 };
 
 struct ClickUpgrade {
@@ -54,10 +71,18 @@ struct ClickUpgrade {
         return static_cast<uint64_t>(baseCost * std::pow(costMultiplier, owned));
     }
 
-    // Calculate milestone bonus (2x per 10 levels)
+    // Calculate milestone bonus (2x per 10 levels, 10x per 50 levels)
     double getMilestoneMultiplier() const {
-        int milestones = owned / 10;
-        return std::pow(2.0, milestones);
+        int milestones10 = owned / 10;
+        int milestones50 = owned / 50;
+        
+        // 2x bonus per 10 levels
+        double bonus10 = std::pow(2.0, milestones10);
+        
+        // Additional 10x bonus per 50 levels
+        double bonus50 = std::pow(10.0, milestones50);
+        
+        return bonus10 * bonus50;
     }
 
     // Get effective click value with milestone bonus
@@ -72,6 +97,15 @@ struct ClickUpgrade {
 
     int getNextMilestoneLevel() const {
         return ((owned / 10) + 1) * 10;
+    }
+    
+    // Get next major milestone (50 level) info
+    int getLevelsToNextMajorMilestone() const {
+        return 50 - (owned % 50);
+    }
+    
+    int getNextMajorMilestoneLevel() const {
+        return ((owned / 50) + 1) * 50;
     }
 };
 
@@ -142,7 +176,7 @@ private:
     double manualTaxPerClick = 1.0;
     
         // Level system
-    int playerLevel = 0;  // Changed from 1 to 0
+    int playerLevel = 1;  // Start at level 1
     uint64_t currentXP = 0;
     double lastTaxesForXP = 0.0;
     
@@ -156,7 +190,7 @@ private:
     double totalPlayTime = 0.0;           // Total time played across all sessions (in seconds)
     double timeSinceLastAscension = 0.0;  // Time since last ascension (in seconds)
     
-    static constexpr double PRESTIGE_BONUS_PER_STAR = 0.05;
+    static constexpr double PRESTIGE_BONUS_PER_STAR = 0.50;
 
     // Upgrades
     std::vector<Upgrade> upgrades;
@@ -178,15 +212,15 @@ private:
     static constexpr int UPGRADE_HEIGHT = 60;
     static constexpr int UPGRADE_SPACING = 10;
     static constexpr int CLICK_UPGRADE_X_START = 800;
-    static constexpr double TAXES_PER_XP = 100.0;
+    static constexpr double TAXES_PER_XP = 50.0;
     static constexpr double BONUS_PER_LEVEL = 0.005;
 	static constexpr double XP_BASE = 100.0;
 
 #ifdef _DEBUG
-	static constexpr double DEBUG_MANUAL_TAX_PER_CLICK = 1000.0;
-	static constexpr double DEBUG_BONUS_PER_LEVEL = 10.0; // 1000% bonus per level for testing
-    static constexpr double DEBUG_START_MONEY = 1000.0;
-    static constexpr int DEBUG_START_LEVEL = 0;
+	static constexpr double DEBUG_MANUAL_TAX_PER_CLICK = 10000000000.0;
+	static constexpr double DEBUG_BONUS_PER_LEVEL = BONUS_PER_LEVEL;
+    static constexpr double DEBUG_START_MONEY = 10000000.0;
+    static constexpr int DEBUG_START_LEVEL = 1;  // Start at level 1
 #endif // DEBUG
 
 };
