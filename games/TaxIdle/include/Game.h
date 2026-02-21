@@ -104,6 +104,10 @@ private:
     void resetGame();
     void ascendGame();  // New: Ascension/Prestige system
     
+    // Auto-upgrade functions
+    void autoUpgradePassiveIncomes();
+    void toggleAutoUpgrade(int upgradeIndex);
+    
     // Helper to recalculate stats
     void recalculateTaxesPerSecond();
     void recalculateClickValue();
@@ -152,6 +156,7 @@ private:
     // Upgrades
     std::vector<Upgrade> upgrades;
     std::vector<ClickUpgrade> clickUpgrades;
+    std::vector<bool> autoUpgradeEnabled;  // Track which upgrades have auto-upgrade enabled
 
     // Save notification
     std::string notificationMessage;

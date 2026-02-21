@@ -26,6 +26,9 @@ Game::Game() {
         {"Elite Status", "Master tax collector", 50000.0, 500.0, 0, 1.40},
     };
 
+    // Initialize auto-upgrade flags (all disabled by default)
+    autoUpgradeEnabled.resize(upgrades.size(), false);
+
 #ifdef _DEBUG
     // Debug mode: Start with higher click value for testing
     manualTaxPerClick = DEBUG_MANUAL_TAX_PER_CLICK;
@@ -170,8 +173,12 @@ void Game::handleMouseClick(int x, int y) {
     for (size_t i = 0; i < upgrades.size(); ++i) {
         int buttonY = UPGRADE_Y_START + static_cast<int>(i) * (UPGRADE_HEIGHT + UPGRADE_SPACING);
         
+        // Check AUTO button (new - leftmost)
+        if (x >= 280 && x <= 310 && y >= buttonY && y <= buttonY + UPGRADE_HEIGHT) {
+            toggleAutoUpgrade(static_cast<int>(i));
+        }
         // Check MAX button (right side of upgrade button)
-        if (x >= 720 && x <= 770 && y >= buttonY && y <= buttonY + UPGRADE_HEIGHT) {
+        else if (x >= 720 && x <= 770 && y >= buttonY && y <= buttonY + UPGRADE_HEIGHT) {
             tryPurchaseUpgradeMax(static_cast<int>(i));
         }
         // Check regular upgrade button
@@ -193,6 +200,44 @@ void Game::handleMouseClick(int x, int y) {
         else if (x >= CLICK_UPGRADE_X_START && x <= CLICK_UPGRADE_X_START + 320 && 
             y >= buttonY && y <= buttonY + UPGRADE_HEIGHT) {
             tryPurchaseClickUpgrade(static_cast<int>(i));
+        }
+    }
+}
+
+void Game::toggleAutoUpgrade(int upgradeIndex) {
+    if (upgradeIndex < 0 || upgradeIndex >= autoUpgradeEnabled.size()) return;
+    
+    autoUpgradeEnabled[upgradeIndex] = !autoUpgradeEnabled[upgradeIndex];
+    
+    std::string msg = std::format("{} Auto-Upgrade: {}", 
+        upgrades[upgradeIndex].name, 
+        autoUpgradeEnabled[upgradeIndex] ? "ON" : "OFF");
+    showSaveNotification(msg);
+}
+
+void Game::autoUpgradePassiveIncomes() {
+    // Try to auto-purchase upgrades that have auto-upgrade enabled
+    for (size_t i = 0; i < upgrades.size(); ++i) {
+        if (!autoUpgradeEnabled[i]) continue;
+        
+        Upgrade& upgrade = upgrades[i];
+        uint64_t cost = upgrade.getCurrentCost();
+        
+        // Only auto-buy if we can afford it
+        if (totalTaxes >= cost) {
+            int oldLevel = upgrade.owned;
+            totalTaxes -= cost;
+            upgrade.owned++;
+            
+            // Recalculate total taxes per second with milestone bonuses
+            recalculateTaxesPerSecond();
+            
+            // Show notification on milestone
+            if (oldLevel / 10 != upgrade.owned / 10) {
+                std::string msg = std::format("AUTO! {} Lv{} - {}x Bonus!", 
+                    upgrade.name, upgrade.owned, static_cast<int>(upgrade.getMilestoneMultiplier()));
+                showSaveNotification(msg);
+            }
         }
     }
 }
@@ -366,6 +411,9 @@ void Game::update(double deltaTime) {
     totalTaxes += taxesPerSecond * deltaTime;
     lifetimeTaxes += taxesPerSecond * deltaTime;
     
+    // Auto-upgrade passive incomes
+    autoUpgradePassiveIncomes();
+    
     // Update experience
     updateExperience();
     
@@ -400,7 +448,7 @@ void Game::saveGame(const std::string& filename) {
         return;
     }
 
-    file << "VERSION=2\n";  // Increment version for prestige support
+    file << "VERSION=3\n";  // Increment version for auto-upgrade support
 
     // Save core game state
     file << "TOTAL_TAXES=" << totalTaxes << "\n";
@@ -426,6 +474,12 @@ void Game::saveGame(const std::string& filename) {
     file << "CLICK_UPGRADE_COUNT=" << clickUpgrades.size() << "\n";
     for (size_t i = 0; i < clickUpgrades.size(); ++i) {
         file << "CLICK_UPGRADE_" << i << "=" << clickUpgrades[i].owned << "\n";
+    }
+
+    // Save auto-upgrade settings
+    file << "AUTO_UPGRADE_COUNT=" << autoUpgradeEnabled.size() << "\n";
+    for (size_t i = 0; i < autoUpgradeEnabled.size(); ++i) {
+        file << "AUTO_UPGRADE_" << i << "=" << (autoUpgradeEnabled[i] ? 1 : 0) << "\n";
     }
 
     file.close();
@@ -481,6 +535,12 @@ bool Game::loadGame(const std::string& filename) {
             size_t index = std::stoull(key.substr(14));
             if (index < clickUpgrades.size()) {
                 clickUpgrades[index].owned = std::stoi(value);
+            }
+        }
+        else if (key.starts_with("AUTO_UPGRADE_") && !key.starts_with("AUTO_UPGRADE_COUNT")) {
+            size_t index = std::stoull(key.substr(13));
+            if (index < autoUpgradeEnabled.size()) {
+                autoUpgradeEnabled[index] = (std::stoi(value) != 0);
             }
         }
     }
@@ -665,7 +725,12 @@ void Game::render() {
         std::string buttonText = std::format("{} - {} ({})",
             upgrade.name, formatNumber(cost), upgrade.owned);
 
-        // Main upgrade button (narrower to fit MAX button)
+        // AUTO button (leftmost)
+        bool autoEnabled = autoUpgradeEnabled[i];
+        SDL_Color autoColor = autoEnabled ? SDL_Color{0, 200, 0, 255} : SDL_Color{60, 60, 60, 255};
+        renderButton(autoEnabled ? "ON" : "OFF", 280, y, 30, UPGRADE_HEIGHT, true);
+        
+        // Main upgrade button (narrower to fit AUTO and MAX buttons)
         renderButton(buttonText, 320, y, 390, UPGRADE_HEIGHT, canAfford);
         
         // MAX button
@@ -1019,6 +1084,9 @@ void Game::resetGame() {
         upgrade.owned = 0;
     }
 
+    // Reset auto-upgrade settings
+    std::fill(autoUpgradeEnabled.begin(), autoUpgradeEnabled.end(), false);
+
 	// Reset prestige system
     prestigeStars = 0;
 	totalAscensions = 0;
@@ -1082,6 +1150,9 @@ void Game::ascendGame() {
     for (auto& upgrade : clickUpgrades) {
         upgrade.owned = 0;
     }
+
+    // Reset auto-upgrade settings on ascension
+    std::fill(autoUpgradeEnabled.begin(), autoUpgradeEnabled.end(), false);
     
 #ifdef _DEBUG
     // Reapply debug boosts
