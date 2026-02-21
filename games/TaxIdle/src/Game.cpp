@@ -172,17 +172,17 @@ void Game::handleMouseClick(int x, int y) {
     // Check passive income upgrade buttons (left side)
     for (size_t i = 0; i < upgrades.size(); ++i) {
         int buttonY = UPGRADE_Y_START + static_cast<int>(i) * (UPGRADE_HEIGHT + UPGRADE_SPACING);
-        
-        // Check AUTO button (new - leftmost)
-        if (x >= 280 && x <= 310 && y >= buttonY && y <= buttonY + UPGRADE_HEIGHT) {
+
+        // Check AUTO button (leftmost) - increased width from 30 to 50
+        if (x >= 280 && x <= 330 && y >= buttonY && y <= buttonY + UPGRADE_HEIGHT) {
             toggleAutoUpgrade(static_cast<int>(i));
         }
         // Check MAX button (right side of upgrade button)
         else if (x >= 720 && x <= 770 && y >= buttonY && y <= buttonY + UPGRADE_HEIGHT) {
             tryPurchaseUpgradeMax(static_cast<int>(i));
         }
-        // Check regular upgrade button
-        else if (x >= 320 && x <= 710 && y >= buttonY && y <= buttonY + UPGRADE_HEIGHT) {
+        // Check regular upgrade button - adjusted x position
+        else if (x >= 340 && x <= 710 && y >= buttonY && y <= buttonY + UPGRADE_HEIGHT) {
             tryPurchaseUpgrade(static_cast<int>(i));
         }
     }
@@ -190,14 +190,14 @@ void Game::handleMouseClick(int x, int y) {
     // Check click value upgrade buttons (right side)
     for (size_t i = 0; i < clickUpgrades.size(); ++i) {
         int buttonY = UPGRADE_Y_START + static_cast<int>(i) * (UPGRADE_HEIGHT + UPGRADE_SPACING);
-        
+
         // Check MAX button (right side of upgrade button)
-        if (x >= CLICK_UPGRADE_X_START + 330 && x <= CLICK_UPGRADE_X_START + 380 && 
+        if (x >= CLICK_UPGRADE_X_START + 330 && x <= CLICK_UPGRADE_X_START + 380 &&
             y >= buttonY && y <= buttonY + UPGRADE_HEIGHT) {
             tryPurchaseClickUpgradeMax(static_cast<int>(i));
         }
         // Check regular upgrade button
-        else if (x >= CLICK_UPGRADE_X_START && x <= CLICK_UPGRADE_X_START + 320 && 
+        else if (x >= CLICK_UPGRADE_X_START && x <= CLICK_UPGRADE_X_START + 320 &&
             y >= buttonY && y <= buttonY + UPGRADE_HEIGHT) {
             tryPurchaseClickUpgrade(static_cast<int>(i));
         }
@@ -295,15 +295,15 @@ double Game::getLevelBonus() const {
 #else
     bonus += (playerLevel * BONUS_PER_LEVEL);
 #endif
-    bonus += bonus * getPrestigeBonus();
-    return bonus;
+	double prestigeBonus = getPrestigeBonus();
+	return prestigeBonus > 0 ? bonus * prestigeBonus : bonus;  // Apply prestige bonus to level bonus
 }
 
 void Game::recalculateTaxesPerSecond() {
     taxesPerSecond = 0.0;
     for (const auto& upgrade : upgrades) {
         if (upgrade.owned > 0) {
-            taxesPerSecond += upgrade.getEffectiveTaxPerSecond(getPrestigeBonus());
+            taxesPerSecond += upgrade.getEffectiveTaxPerSecond(getPrestigeBonus(), getLevelBonus());
         }
     }
 }
@@ -407,6 +407,10 @@ double Game::getTimeToNextLevel() const {
 }
 
 void Game::update(double deltaTime) {
+    // Update time tracking
+    totalPlayTime += deltaTime;
+    timeSinceLastAscension += deltaTime;
+    
     // Generate passive income
     totalTaxes += taxesPerSecond * deltaTime;
     lifetimeTaxes += taxesPerSecond * deltaTime;
@@ -448,7 +452,7 @@ void Game::saveGame(const std::string& filename) {
         return;
     }
 
-    file << "VERSION=3\n";  // Increment version for auto-upgrade support
+    file << "VERSION=4\n";  // Increment version for time tracking support
 
     // Save core game state
     file << "TOTAL_TAXES=" << totalTaxes << "\n";
@@ -464,6 +468,10 @@ void Game::saveGame(const std::string& filename) {
     // Save prestige system
     file << "PRESTIGE_STARS=" << prestigeStars << "\n";
     file << "TOTAL_ASCENSIONS=" << totalAscensions << "\n";
+    
+    // Save time tracking
+    file << "TOTAL_PLAY_TIME=" << totalPlayTime << "\n";
+    file << "TIME_SINCE_LAST_ASCENSION=" << timeSinceLastAscension << "\n";
 
     // Save upgrades...
     file << "UPGRADE_COUNT=" << upgrades.size() << "\n";
@@ -524,6 +532,12 @@ bool Game::loadGame(const std::string& filename) {
         }
         else if (key == "TOTAL_ASCENSIONS") {
             totalAscensions = std::stoi(value);
+        }
+        else if (key == "TOTAL_PLAY_TIME") {
+            totalPlayTime = std::stod(value);
+        }
+        else if (key == "TIME_SINCE_LAST_ASCENSION") {
+            timeSinceLastAscension = std::stod(value);
         }
         else if (key.starts_with("UPGRADE_") && !key.starts_with("UPGRADE_COUNT")) {
             size_t index = std::stoull(key.substr(8));
@@ -663,8 +677,8 @@ void Game::render() {
     
     // Show prestige bonus if any
     if (prestigeStars > 0) {
-        std::string prestigeText = std::format("Prestige: {} Stars ({}x Bonus)", 
-            prestigeStars, static_cast<int>(getPrestigeBonus()));
+        std::string prestigeText = std::format("Prestige: {} Stars ({}% Bonus)", 
+            prestigeStars, static_cast<int>(getPrestigeBonus() * 100.0));
         renderText(prestigeText, 850, 50, {255, 100, 255, 255});  // Purple/magenta color
     }
 
@@ -678,6 +692,12 @@ void Game::render() {
     renderText(tpsText, 50, 75, {200, 200, 200, 255});
     renderText(cpcText, 50, 100, {200, 200, 200, 255});
     renderText(lifetimeText, 50, 125, {180, 180, 180, 255});
+    
+    // Time stats (new)
+    std::string totalTimeText = std::format("Total Time: {}", formatTime(totalPlayTime));
+    std::string ascensionTimeText = std::format("This Run: {}", formatTime(timeSinceLastAscension));
+    renderText(totalTimeText, 500, 50, {200, 200, 200, 255});
+    renderText(ascensionTimeText, 500, 75, {180, 180, 180, 255});
 
     // Save/Load/Reset/Ascend instructions
     if (ascensionConfirmationPending) {
@@ -725,13 +745,13 @@ void Game::render() {
         std::string buttonText = std::format("{} - {} ({})",
             upgrade.name, formatNumber(cost), upgrade.owned);
 
-        // AUTO button (leftmost)
+        // AUTO button (leftmost) - increased width from 30 to 50
         bool autoEnabled = autoUpgradeEnabled[i];
         SDL_Color autoColor = autoEnabled ? SDL_Color{0, 200, 0, 255} : SDL_Color{60, 60, 60, 255};
-        renderButton(autoEnabled ? "ON" : "OFF", 280, y, 30, UPGRADE_HEIGHT, true);
+        renderButton(autoEnabled ? "ON" : "OFF", 280, y, 50, UPGRADE_HEIGHT, true);
         
-        // Main upgrade button (narrower to fit AUTO and MAX buttons)
-        renderButton(buttonText, 320, y, 390, UPGRADE_HEIGHT, canAfford);
+        // Main upgrade button - adjusted x from 320 to 340, width from 390 to 370
+        renderButton(buttonText, 340, y, 370, UPGRADE_HEIGHT, canAfford);
         
         // MAX button
         int maxPurchasable = calculateMaxPurchasable(
@@ -739,8 +759,8 @@ void Game::render() {
         bool canBuyMax = maxPurchasable > 0;
         renderButton("MAX", 720, y, 50, UPGRADE_HEIGHT, canBuyMax);
         
-        // Show effective value with milestone bonus
-        double effectiveValue = upgrade.getEffectiveTaxPerSecond(getPrestigeBonus());
+        // Show effective value with milestone bonus - adjusted x from 330 to 350
+        double effectiveValue = upgrade.getEffectiveTaxPerSecond(getPrestigeBonus(), getLevelBonus());
         int multiplier = static_cast<int>(upgrade.getMilestoneMultiplier());
         
         std::string infoText;
@@ -756,7 +776,7 @@ void Game::render() {
             SDL_Color{255, 215, 0, 255} : 
             SDL_Color{200, 200, 200, 255};
         
-        renderText(infoText, 330, y + 35, infoColor);
+        renderText(infoText, 350, y + 35, infoColor);
     }
 
     // Click Value Upgrades (Right Side)
@@ -1069,17 +1089,17 @@ void Game::resetGame() {
     taxesPerSecond = 0.0;
     lifetimeTaxes = 0.0;
     manualTaxPerClick = 1.0;
-    
+
     // Reset level system
     playerLevel = 0;  // Changed from 1 to 0
     currentXP = 0;
     lastTaxesForXP = 0.0;
-    
+
     // Reset all upgrades
     for (auto& upgrade : upgrades) {
         upgrade.owned = 0;
     }
-    
+
     for (auto& upgrade : clickUpgrades) {
         upgrade.owned = 0;
     }
@@ -1087,10 +1107,14 @@ void Game::resetGame() {
     // Reset auto-upgrade settings
     std::fill(autoUpgradeEnabled.begin(), autoUpgradeEnabled.end(), false);
 
-	// Reset prestige system
+    // Reset prestige system
     prestigeStars = 0;
-	totalAscensions = 0;
-    
+    totalAscensions = 0;
+
+    // Reset time tracking
+    totalPlayTime = 0.0;
+    timeSinceLastAscension = 0.0;
+
 #ifdef _DEBUG
     // Reapply debug boosts
     manualTaxPerClick = DEBUG_MANUAL_TAX_PER_CLICK;
@@ -1098,14 +1122,14 @@ void Game::resetGame() {
     playerLevel = 0;
     SDL_Log("Game reset with DEBUG MODE values");
 #endif
-    
+
     // Recalculate everything
     recalculateTaxesPerSecond();
     recalculateClickValue();
-    
+
     resetConfirmationPending = false;
     showSaveNotification("Game Reset! All progress cleared.");
-    
+
     SDL_Log("Game has been reset to initial state");
 }
 
@@ -1114,6 +1138,7 @@ bool Game::canAscend() const {
     return playerLevel >= 20;
 }
 
+// Prestige bonus is 5% per star, so 1.05x per star
 double Game::getPrestigeBonus() const {
     return prestigeStars * PRESTIGE_BONUS_PER_STAR;
 }
@@ -1123,54 +1148,57 @@ void Game::ascendGame() {
         showSaveNotification("You need to reach Level 20 to ascend!");
         return;
     }
-    
+
     // Calculate stars earned from current level (1 per 20 levels)
     int starsEarned = playerLevel / 20;
-    
+
     // Add to permanent prestige stars
     prestigeStars += (starsEarned * starsEarned);
     totalAscensions++;
-    
-    // Reset progress (similar to resetGame but keep prestige)
+
+    // Reset progress (similar to resetGame but keep prestige and total play time)
     totalTaxes = 0.0;
     taxesPerSecond = 0.0;
     lifetimeTaxes = 0.0;
     manualTaxPerClick = 1.0;
-    
+
     // Reset level system
     playerLevel = 0;
     currentXP = 0;
     lastTaxesForXP = 0.0;
-    
+
+    // Reset time since last ascension (but keep total play time)
+    timeSinceLastAscension = 0.0;
+
     // Reset all upgrades
     for (auto& upgrade : upgrades) {
         upgrade.owned = 0;
     }
-    
+
     for (auto& upgrade : clickUpgrades) {
         upgrade.owned = 0;
     }
 
     // Reset auto-upgrade settings on ascension
     std::fill(autoUpgradeEnabled.begin(), autoUpgradeEnabled.end(), false);
-    
+
 #ifdef _DEBUG
     // Reapply debug boosts
     manualTaxPerClick = DEBUG_MANUAL_TAX_PER_CLICK;
     totalTaxes = DEBUG_START_MONEY;
     playerLevel = DEBUG_START_LEVEL;
 #endif
-    
+
     // Recalculate with new prestige bonus
     recalculateTaxesPerSecond();
     recalculateClickValue();
-    
+
     ascensionConfirmationPending = false;
-    
-    std::string msg = std::format("ASCENDED! +{} Stars | Total: {} Stars ({}x Bonus)", 
+
+    std::string msg = std::format("ASCENDED! +{} Stars | Total: {} Stars ({}x Bonus)",
         starsEarned, prestigeStars, getPrestigeBonus());
     showSaveNotification(msg);
-    
-    SDL_Log("Ascension #%d complete. Earned %d stars. Total prestige stars: %d", 
-            totalAscensions, starsEarned, prestigeStars);
+
+    SDL_Log("Ascension #%d complete. Earned %d stars. Total prestige stars: %d",
+        totalAscensions, starsEarned, prestigeStars);
 }

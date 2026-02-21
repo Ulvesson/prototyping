@@ -25,9 +25,10 @@ struct Upgrade {
     }
 
     // Get effective tax per second with milestone bonus
-    double getEffectiveTaxPerSecond(double prestigeBonus) const {
+    double getEffectiveTaxPerSecond(double prestigeBonus, double levelBonus) const {
         //  //upgrade.baseTaxPerSecond * upgrade.owned * upgrade.getMilestoneMultiplier();
 		double tax = baseTaxPerSecond * owned * getMilestoneMultiplier();
+        tax += tax * levelBonus;
 		return tax += tax * prestigeBonus;  // Apply prestige bonus to tax per second
     }
 
@@ -151,7 +152,11 @@ private:
     bool ascensionConfirmationPending = false;
     double ascensionConfirmationTimer = 0.0;
     
-    static constexpr double PRESTIGE_BONUS_PER_STAR = 0.25;  // 25% per star
+    // Time tracking
+    double totalPlayTime = 0.0;           // Total time played across all sessions (in seconds)
+    double timeSinceLastAscension = 0.0;  // Time since last ascension (in seconds)
+    
+    static constexpr double PRESTIGE_BONUS_PER_STAR = 0.05;
 
     // Upgrades
     std::vector<Upgrade> upgrades;
